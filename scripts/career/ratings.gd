@@ -22,13 +22,42 @@ const ROLE_WEIGHTS := {
 		"heading": 0.1, "passing": 0.05, "crossing": 0.05},
 }
 
-## Outfield roles per formation (the keeper is always added first).
+## Formations: each outfield slot is [role, x, y] as fractions of the pitch for a
+## team attacking to the right (x = 0 own goal line). The keeper is always added first.
 const FORMATIONS := {
-	"2-2": ["DEF", "DEF", "FWD", "FWD"],
-	"1-2-1": ["DEF", "MID", "MID", "FWD"],
-	"2-1-1": ["DEF", "DEF", "MID", "FWD"],
-	"1-1-2": ["DEF", "MID", "FWD", "FWD"],
+	"4-4-2": [["DEF", 0.15, 0.16], ["DEF", 0.14, 0.38], ["DEF", 0.14, 0.62], ["DEF", 0.15, 0.84],
+		["MID", 0.28, 0.16], ["MID", 0.27, 0.38], ["MID", 0.27, 0.62], ["MID", 0.28, 0.84],
+		["FWD", 0.40, 0.40], ["FWD", 0.40, 0.60]],
+	"4-3-3": [["DEF", 0.15, 0.16], ["DEF", 0.14, 0.38], ["DEF", 0.14, 0.62], ["DEF", 0.15, 0.84],
+		["MID", 0.27, 0.30], ["MID", 0.25, 0.50], ["MID", 0.27, 0.70],
+		["FWD", 0.38, 0.18], ["FWD", 0.40, 0.50], ["FWD", 0.38, 0.82]],
+	"3-5-2": [["DEF", 0.14, 0.27], ["DEF", 0.13, 0.50], ["DEF", 0.14, 0.73],
+		["MID", 0.29, 0.10], ["MID", 0.26, 0.32], ["MID", 0.24, 0.50], ["MID", 0.26, 0.68], ["MID", 0.29, 0.90],
+		["FWD", 0.40, 0.40], ["FWD", 0.40, 0.60]],
+	"4-5-1": [["DEF", 0.15, 0.16], ["DEF", 0.14, 0.38], ["DEF", 0.14, 0.62], ["DEF", 0.15, 0.84],
+		["MID", 0.29, 0.12], ["MID", 0.27, 0.32], ["MID", 0.25, 0.50], ["MID", 0.27, 0.68], ["MID", 0.29, 0.88],
+		["FWD", 0.40, 0.50]],
+	"5-3-2": [["DEF", 0.16, 0.10], ["DEF", 0.14, 0.30], ["DEF", 0.13, 0.50], ["DEF", 0.14, 0.70], ["DEF", 0.16, 0.90],
+		["MID", 0.27, 0.30], ["MID", 0.25, 0.50], ["MID", 0.27, 0.70],
+		["FWD", 0.40, 0.40], ["FWD", 0.40, 0.60]],
 }
+const DEFAULT_FORMATION := "4-4-2"
+
+
+## Outfield roles of a formation, in slot order.
+static func roles(formation: String) -> Array:
+	var list: Array = []
+	for s in FORMATIONS.get(formation, FORMATIONS[DEFAULT_FORMATION]):
+		list.append(s[0])
+	return list
+
+
+## Pitch fractions of every slot (keeper first) for a team attacking right.
+static func spots(formation: String) -> Array:
+	var list: Array = [Vector2(0.025, 0.5)]
+	for s in FORMATIONS.get(formation, FORMATIONS[DEFAULT_FORMATION]):
+		list.append(Vector2(s[1], s[2]))
+	return list
 
 
 static func stat(p: Dictionary, a: String) -> float:
@@ -67,7 +96,7 @@ static func value(p: Dictionary) -> int:
 
 
 static func wage(p: Dictionary) -> int:
-	return round_money(maxf(300.0, value(p) * 0.004))
+	return round_money(maxf(300.0, value(p) * 0.003))
 
 
 static func round_money(v: float) -> int:

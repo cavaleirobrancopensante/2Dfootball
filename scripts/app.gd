@@ -51,7 +51,7 @@ func show_main_menu() -> void:
 	v.alignment = BoxContainer.ALIGNMENT_CENTER
 	m.add_child(v)
 	v.add_child(UI.label("2D FOOTBALL", 72, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER))
-	v.add_child(UI.label("Manage a club. Play the matches.", 22, UI.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	v.add_child(UI.label("Manage a club. Play the matches. 11 v 11.", 22, UI.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 	v.add_child(UI.spacer(16))
 	var col := UI.vbox(12)
 	col.custom_minimum_size = Vector2(440, 0)
@@ -64,6 +64,10 @@ func show_main_menu() -> void:
 			col.add_child(UI.accent_button("CONTINUE  ·  %s, %d" % [c["name"], saved.year], func() -> void:
 				career = saved
 				show_hub("match")))
+	if Career.old_save():
+		var note := UI.label("Your 5-a-side career from v1.1 can't continue in 11-a-side. Start a new one.", 16, UI.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		col.add_child(note)
 	col.add_child(UI.button("NEW CAREER", func() -> void: _confirm_new_career(), 24, Vector2(0, 60)))
 	col.add_child(UI.button("QUICK MATCH", func() -> void: _play_quick_match(), 24, Vector2(0, 60)))
 	v.add_child(UI.spacer(20))
@@ -71,7 +75,7 @@ func show_main_menu() -> void:
 
 
 func _confirm_new_career() -> void:
-	if Career.has_save():
+	if Career.has_save() and not Career.old_save():
 		_dialog("Start a new career?", "Your saved career will be replaced.", [
 			["START NEW", func() -> void: show_new_career()], ["CANCEL", func() -> void: _close_dialog()]])
 	else:
@@ -249,7 +253,7 @@ func _tab_match() -> void:
 	var lv := UI.vbox(4)
 	var roles := career.roles_for(career.user)
 	career.validate_lineup(career.user)
-	lv.add_child(UI.row([["", 70], ["Your lineup  (%s)" % career.clubs[career.user]["formation"], 0], ["OVR", 70, HORIZONTAL_ALIGNMENT_CENTER], ["Fitness", 170]], Callable(), Color(0, 0, 0, 0), 16))
+	content.add_child(UI.row([["", 70], ["Your lineup  (%s)" % career.clubs[career.user]["formation"], 0], ["OVR", 70, HORIZONTAL_ALIGNMENT_CENTER], ["Fitness", 170]], Callable(), Color(0, 0, 0, 0), 16))
 	var lineup: Array = career.clubs[career.user]["lineup"]
 	for i in lineup.size():
 		var p: Dictionary = career.players[lineup[i]]
@@ -257,8 +261,7 @@ func _tab_match() -> void:
 		var r := UI.row([[roles[i], 70, HORIZONTAL_ALIGNMENT_LEFT, UI.GOLD], [p["name"], 0], [str(o), 70, HORIZONTAL_ALIGNMENT_CENTER, UI.rating_colour(o)], ["", 170]], Callable(), Color(1, 1, 1, 0.04))
 		_put_bar(r, float(p["condition"]) / 100.0)
 		lv.add_child(r)
-	content.add_child(lv)
-	content.add_child(UI.spacer(0, true))
+	content.add_child(UI.scroll(lv))
 	var btns := UI.hbox(14)
 	btns.add_child(UI.accent_button("PLAY MATCH", func() -> void: _play_career_match(), 26, Vector2(280, 66)))
 	btns.add_child(UI.button("SIMULATE", func() -> void: _advance({}), 22, Vector2(200, 66)))
@@ -293,7 +296,7 @@ func _tab_squad() -> void:
 		var b := UI.button(f, func() -> void:
 			c["formation"] = ff
 			career.validate_lineup(cid)
-			show_hub("squad"), 18, Vector2(80, 44))
+			show_hub("squad"), 17, Vector2(76, 44))
 		if f == c["formation"]:
 			b.add_theme_stylebox_override("normal", UI._box(UI.ACCENT, 8))
 		top.add_child(b)
@@ -304,20 +307,24 @@ func _tab_squad() -> void:
 	content.add_child(top)
 	# Lineup slots
 	var roles := career.roles_for(cid)
-	var slots := UI.hbox(8)
-	for i in 5:
+	var grid := GridContainer.new()
+	grid.columns = 6
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	for i in roles.size():
 		var ii := i
 		var pid: int = c["lineup"][i] if i < c["lineup"].size() else -1
 		var nm: String = career.players[pid]["name"] if pid >= 0 else "—"
-		var b := UI.button("%s\n%s" % [roles[i], nm], func() -> void:
+		var short_nm: String = nm.split(" ", false)[-1] if nm != "—" else nm
+		var b := UI.button("%s  %s" % [roles[i], short_nm], func() -> void:
 			lineup_slot = -1 if lineup_slot == ii else ii
-			show_hub("squad"), 15, Vector2(0, 62))
+			show_hub("squad"), 14, Vector2(0, 40))
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.clip_text = true
 		if lineup_slot == i:
 			b.add_theme_stylebox_override("normal", UI._box(Color("#b08a20"), 8))
-		slots.add_child(b)
-	content.add_child(slots)
+		grid.add_child(b)
+	content.add_child(grid)
 	content.add_child(UI.label("Tap a slot, then a player to put him there." if lineup_slot == -1 else "Now tap the player for the %s slot." % roles[lineup_slot], 15, UI.MUTED))
 	var list := UI.vbox(4)
 	list.add_child(UI.row([["", 44], ["Name", 0], ["Pos", 50], ["Age", 46, HORIZONTAL_ALIGNMENT_CENTER], ["OVR", 50, HORIZONTAL_ALIGNMENT_CENTER], ["Fitness", 170], ["Value", 90, HORIZONTAL_ALIGNMENT_RIGHT]], Callable(), Color(0, 0, 0, 0), 15))

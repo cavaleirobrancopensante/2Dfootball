@@ -8,7 +8,7 @@ extends Node2D
 const RUN_SPEED := 200.0   # reference speed for a 60-pace player
 const ACTION_TIME := {
 	"kick": 0.32, "pass": 0.24, "slide": 0.5, "fall": 0.9, "header": 0.35, "celebrate": 99.0,
-	"skill": 0.28,
+	"skill": 0.28, "hold": 99.0, "gk_throw": 0.35, "gk_punt": 0.4,
 }
 const RECOLOR := preload("res://shaders/recolor.gdshader")
 
@@ -198,18 +198,28 @@ func _animate(delta: float) -> void:
 	var anim := "idle"
 	if action == "skill":
 		anim = "run"
+	elif is_gk and action == "slide":
+		anim = "gk_dive_l"
+	elif is_gk and action == "hold":
+		anim = "gk_catch"
 	elif action != "":
 		anim = action
 	elif velocity.length() > 25.0:
 		anim = "run"
+	elif is_gk:
+		anim = "gk_ready"
 	_set_anim(anim, false)
 	var n: int = SpriteData.FRAMES[_anim + "_" + _dir]
 	var fps := 3.0
 	match _anim:
 		"run":
 			fps = 6.0 + velocity.length() / 22.0
-		"idle":
+		"idle", "gk_ready":
 			fps = 2.5
+		"gk_catch":
+			fps = 10.0
+		"gk_dive_l":
+			fps = 9.0
 		"celebrate":
 			fps = 7.0
 		_:
@@ -218,7 +228,7 @@ func _animate(delta: float) -> void:
 	if _frame_t >= 1.0:
 		_frame_t -= 1.0
 		_frame += 1
-	var looping := _anim in ["run", "idle", "celebrate"]
+	var looping := _anim in ["run", "idle", "celebrate", "gk_ready"]
 	if looping:
 		_frame %= n
 	else:
@@ -231,6 +241,11 @@ func _set_anim(anim: String, force: bool) -> void:
 	var dir_flip := _octant()
 	var d: String = dir_flip[0]
 	var flip: bool = dir_flip[1]
+	# Dives: one animation (drawn falling to the right), rotated to the dive direction.
+	var dive := anim == "gk_dive_l"
+	if dive:
+		d = "s"
+		flip = false
 	if not force and anim == _anim and d == _dir and flip == _flip:
 		return
 	if anim != _anim:
@@ -242,8 +257,10 @@ func _set_anim(anim: String, force: bool) -> void:
 	var key := anim + "_" + d
 	body.texture = tex("res://assets/players/body/%s.png" % key)
 	body.hframes = SpriteData.FRAMES[key]
+	body.offset = -SpriteData.GK_ANCHOR if anim.begins_with("gk_") else -SpriteData.ANCHOR
 	_frame = mini(_frame, body.hframes - 1)
 	rig.scale.x = -1.0 if flip else 1.0
+	rig.rotation = facing.angle() if dive else 0.0
 	if _hair_style != "":
 		hair.texture = tex("res://assets/players/hair/%s_%s.png" % [_hair_style, d])
 

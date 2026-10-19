@@ -124,6 +124,9 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
+	# A keeper holding the ball has it drawn in his hands by his sprite.
+	if owner_player != null and owner_player.get("is_gk") and owner_player.get("action") == "hold":
+		return
 	# Shadow on the grass, ball drawn up at its height.
 	var s := clampf(1.0 - z / 200.0, 0.4, 1.0)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.5))

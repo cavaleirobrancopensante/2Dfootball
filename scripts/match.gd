@@ -1,14 +1,17 @@
 extends Node2D
-## Runs a 5-a-side match: you (team 0, attacking right) against the computer.
+## Runs an 11-a-side match: you (team 0, attacking right) against the computer.
 ## Quick match: shows its own team picker. Career: call configure() first;
 ## `finished` is emitted with the result when the player leaves the match.
 ## States: menu -> kickoff -> play -> goal -> kickoff ... -> fulltime.
 
 signal finished(result: Dictionary)
 
-const PITCH := Rect2(0, 0, 2200, 1300)
+const PITCH := Rect2(0, 0, 3600, 2330)     # 105 x 68 m
+const METRE := 3600.0 / 105.0
 const GOAL_HALF := 130.0
-const MATCH_SECONDS := 180.0
+const BOX_DEPTH := 16.5 * METRE
+const BOX_HALF := 20.16 * METRE
+const MATCH_SECONDS := 300.0               # five real minutes = 90 on the clock
 const SAVE_PATH := "user://record.save"
 const GRAVITY := 980.0
 
@@ -49,6 +52,7 @@ var _carry_t := 0.0
 var _sounds: Dictionary = {}
 var _shake := 0.0
 var _went_fullscreen := false
+var kickoff_partner: Array = [null, null]
 
 
 func configure(cfg: Dictionary) -> void:
@@ -80,7 +84,7 @@ func _ready() -> void:
 	world.add_child(ball)
 
 	camera = Camera2D.new()
-	camera.zoom = Vector2(0.92, 0.92)
+	camera.zoom = Vector2(0.85, 0.85)
 	camera.position_smoothing_enabled = true
 	camera.position_smoothing_speed = 5.0
 	var lim := PITCH.grow(200)
@@ -137,12 +141,12 @@ func _sfx(n: String, db := 0.0) -> void:
 func _make_exhibition_teams() -> void:
 	for t in 2:
 		var kit: Dictionary = Kits.TEAMS[kit_index[t]].duplicate()
-		var roles: Array = ["GK"] + Ratings.FORMATIONS["2-2"]
+		var roles: Array = ["GK"] + Ratings.roles("4-4-2")
 		var list: Array = []
-		for i in 5:
+		for i in roles.size():
 			list.append({"id": -1, "name": "No. %d" % (i + 1), "role": roles[i], "stats": _random_stats(roles[i], 68.0),
 				"energy": 1.0, "look": Kits.random_look(rng)})
-		team_data[t] = {"name": kit["name"], "short": kit["short"], "kit": kit, "formation": "2-2", "players": list}
+		team_data[t] = {"name": kit["name"], "short": kit["short"], "kit": kit, "formation": "4-4-2", "players": list}
 
 
 func _random_stats(role: String, base: float) -> Dictionary:
@@ -186,24 +190,10 @@ func _build_teams() -> void:
 			teams[team].append(f)
 
 
-## Spot for a player in their team's shape, attacking right (fractions mirrored for team 1).
+## Spot for a player in their team's shape (formation fractions, mirrored for team 1).
 func _formation_point(team: int, i: int) -> Vector2:
-	var roles: Array = ["GK"] + Ratings.FORMATIONS[team_data[team].get("formation", "2-2")]
-	var role: String = roles[i]
-	var same: Array = []
-	for j in roles.size():
-		if roles[j] == role:
-			same.append(j)
-	var k := same.find(i)
-	var n := same.size()
-	var fr := Vector2(0.035, 0.5)
-	match role:
-		"DEF":
-			fr = Vector2(0.2, 0.5 if n == 1 else [0.3, 0.7][k])
-		"MID":
-			fr = Vector2(0.31, 0.5 if n == 1 else [0.28, 0.72][k])
-		"FWD":
-			fr = Vector2(0.43 + 0.015 * k, 0.5 if n == 1 else [0.37, 0.63][k])
+	var spots: Array = Ratings.spots(team_data[team].get("formation", Ratings.DEFAULT_FORMATION))
+	var fr: Vector2 = spots[mini(i, spots.size() - 1)]
 	if team == 1:
 		fr.x = 1.0 - fr.x
 	return PITCH.position + fr * PITCH.size
@@ -223,7 +213,23 @@ func _place_for_kickoff(team: int) -> void:
 			p.stop_action()
 			p.cooldown = 0.0
 			p.facing = Vector2.RIGHT if t == 0 else Vector2.LEFT
-	var striker: Footballer = teams[team][4]
+	# The most advanced, most central forward takes it; the nearest teammate gets the pass.
+	var striker: Footballer = null
+	var best := -INF
+	for i in teams[team].size():
+		var sp := _formation_point(team, i)
+		var sc := -absf(sp.x - PITCH.get_center().x) - absf(sp.y - PITCH.get_center().y) * 0.5
+		if i > 0 and sc > best:
+			best = sc
+			striker = teams[team][i]
+	var partner: Footballer = null
+	var pd := INF
+	for o in teams[team]:
+		var f := o as Footballer
+		if f != striker and not f.is_gk and f.position.distance_to(PITCH.get_center()) < pd:
+			pd = f.position.distance_to(PITCH.get_center())
+			partner = f
+	kickoff_partner[team] = partner
 	striker.position = PITCH.get_center() - Vector2(18 if team == 0 else -18, 0)
 	ball.owner_player = striker
 	ball.last_touch_team = team
@@ -280,7 +286,7 @@ func _physics_process(delta: float) -> void:
 						f.face_toward(ball.position)
 			var carrier := ball.owner_player as Footballer
 			if carrier != null and carrier != controlled and state_t > 1.0:
-				_pass_to(carrier, teams[carrier.team][3])
+				_pass_to(carrier, kickoff_partner[carrier.team])
 			if carrier == null or carrier.position.distance_to(PITCH.get_center()) > 40.0:
 				state = "play"
 		"play":
@@ -352,7 +358,7 @@ func _update_controlled() -> void:
 		if d < bd:
 			bd = d
 			best = f
-	if controlled == null or (best != controlled and bd + 70.0 < controlled.position.distance_to(ball.position)):
+	if controlled == null or (best != controlled and bd + 110.0 < controlled.position.distance_to(ball.position)):
 		_set_controlled(best)
 
 
@@ -472,6 +478,8 @@ func _toggle_pause() -> void:
 # ------------------------------------------------------------------ kicking (all use the player's ratings)
 
 func _kick_ball(p: Footballer, dir: Vector2, speed: float, lift: float, anim: String) -> void:
+	if p.is_gk and p.action == "hold":
+		anim = "gk_throw" if anim == "pass" and lift < 100.0 else "gk_punt"
 	p.facing = dir.normalized()
 	p.start_action(anim)
 	p.cooldown = 0.3
@@ -501,14 +509,14 @@ func _shoot(p: Footballer, dir: Vector2, power: float) -> void:
 
 func _pass_to(p: Footballer, t: Footballer) -> void:
 	var d := p.position.distance_to(t.position)
-	if d > 620.0:
+	if d > 800.0:
 		_lofted(p, t.position + t.velocity * 0.5, lerpf(0.16, 0.03, p.st("passing")))
 		receiver[p.team] = t
 		return
 	var lead := t.position + t.velocity * minf(d / 700.0, 0.6)
 	var dir := (lead - p.position).normalized()
 	var acc := p.st("passing")
-	var speed := clampf(d * 1.9 + 90.0, 320.0, 1000.0) * rng.randf_range(1.0 - (1.0 - acc) * 0.2, 1.0 + (1.0 - acc) * 0.2)
+	var speed := clampf(d * 1.9 + 90.0, 320.0, 1250.0) * rng.randf_range(1.0 - (1.0 - acc) * 0.2, 1.0 + (1.0 - acc) * 0.2)
 	_kick_ball(p, _wobble(dir, lerpf(0.12, 0.015, acc) / p.fatigue()), speed, 0.0, "pass")
 	receiver[p.team] = t
 
@@ -523,7 +531,7 @@ func _short_pass(p: Footballer, dir: Vector2) -> void:
 
 ## Long ball: the bar sets the distance; it goes to a teammate near that distance if there is one.
 func _long_ball(p: Footballer, dir: Vector2, c: float) -> void:
-	var want := lerpf(320.0, 1150.0, c)
+	var want := lerpf(400.0, 1800.0, c)
 	var best: Footballer = null
 	var bd := INF
 	for o in teams[p.team]:
@@ -534,7 +542,7 @@ func _long_ball(p: Footballer, dir: Vector2, c: float) -> void:
 		if to.length() < 150.0 or dir.dot(to.normalized()) < 0.7:
 			continue
 		var miss := absf(to.length() - want)
-		if miss < bd and miss < 260.0:
+		if miss < bd and miss < 350.0:
 			bd = miss
 			best = t
 	var sigma := lerpf(0.16, 0.03, p.st("passing")) / p.fatigue()
@@ -551,10 +559,10 @@ func _cross(p: Footballer, dir: Vector2, c: float) -> void:
 	var goal := _opp_goal(p.team)
 	var s := 1.0 if p.team == 0 else -1.0
 	var target: Vector2
-	if absf(goal.x - p.position.x) < 900.0:
+	if absf(goal.x - p.position.x) < 1300.0:
 		var mate: Footballer = null
 		var md := INF
-		var spot := goal - Vector2(s * 190.0, 0)
+		var spot := goal - Vector2(s * 300.0, 0)
 		for o in teams[p.team]:
 			var t := o as Footballer
 			if t == p or t.is_gk:
@@ -563,12 +571,12 @@ func _cross(p: Footballer, dir: Vector2, c: float) -> void:
 			if d < md:
 				md = d
 				mate = t
-		target = Vector2(goal.x - s * rng.randf_range(110.0, 230.0), goal.y + rng.randf_range(-90.0, 90.0))
-		if mate and md < 400.0:
+		target = Vector2(goal.x - s * rng.randf_range(150.0, 420.0), goal.y + rng.randf_range(-200.0, 200.0))
+		if mate and md < 600.0:
 			target.y = lerpf(target.y, mate.position.y, 0.5)
 			receiver[p.team] = mate
 	else:
-		target = p.position + dir * lerpf(350.0, 900.0, c)
+		target = p.position + dir * lerpf(400.0, 1400.0, c)
 	var power_fit := lerpf(0.65, 1.3, c)
 	target = p.position + (target - p.position) * power_fit
 	_lofted(p, target, lerpf(0.14, 0.03, p.st("crossing")) / p.fatigue(), 280.0)
@@ -577,9 +585,9 @@ func _cross(p: Footballer, dir: Vector2, c: float) -> void:
 func _lofted(p: Footballer, target: Vector2, sigma: float, vz := 0.0) -> void:
 	var d := p.position.distance_to(target)
 	if vz <= 0.0:
-		vz = clampf(d * 0.32, 170.0, 340.0)
+		vz = clampf(d * 0.3, 170.0, 420.0)
 	var flight := 2.0 * vz / GRAVITY
-	var speed := clampf(d / flight * 1.06, 250.0, 1150.0)
+	var speed := clampf(d / flight * 1.06, 250.0, 1700.0)
 	var r: Variant = receiver[p.team]
 	_kick_ball(p, _wobble((target - p.position).normalized(), sigma), speed, vz, "kick")
 	receiver[p.team] = r
@@ -636,6 +644,8 @@ func _ball_logic(delta: float) -> void:
 			if not d.can_touch_ball():
 				continue
 			var dist := d.position.distance_to(carrier.position)
+			if carrier.is_gk and carrier.action == "hold":
+				continue   # nobody tackles a keeper with the ball in his hands
 			if d.action == "slide" and d.dribble_point().distance_to(ball.position) < 26.0:
 				var win := lerpf(0.45, 0.95, d.st("tackling")) * (1.0 - 0.3 * carrier.st("dribbling"))
 				if carrier.evade_t > 0.0:
@@ -739,7 +749,7 @@ func _take_ball(p: Footballer) -> void:
 
 func _header(p: Footballer) -> void:
 	var own := _own_goal(p.team)
-	var near_opp := ball.position.distance_to(_opp_goal(p.team)) < 500.0
+	var near_opp := ball.position.distance_to(_opp_goal(p.team)) < 700.0
 	var dir: Vector2
 	if near_opp:
 		var aim := _opp_goal(p.team) + Vector2(0, rng.randf_range(-GOAL_HALF, GOAL_HALF) * 0.75)
@@ -759,7 +769,7 @@ func _header(p: Footballer) -> void:
 
 func _in_own_box(p: Footballer) -> bool:
 	var gx := PITCH.position.x if p.team == 0 else PITCH.end.x
-	return absf(p.position.x - gx) < 330.0 and absf(p.position.y - PITCH.get_center().y) < 300.0
+	return absf(p.position.x - gx) < BOX_DEPTH and absf(p.position.y - PITCH.get_center().y) < BOX_HALF
 
 
 func _own_goal(team: int) -> Vector2:
@@ -786,10 +796,10 @@ func _on_goal(side: int) -> void:
 	var who := ""
 	if last_kicker and last_kicker.team == scorer_team:
 		who = last_kicker.player_name
-		scorers.append([scorer_team, last_kicker.pid, who])
+		scorers.append([scorer_team, last_kicker.pid, "%s %d'" % [who, game_minute()]])
 	else:
 		who = "Own goal"
-		scorers.append([scorer_team, -1, who])
+		scorers.append([scorer_team, -1, "Own goal %d'" % game_minute()])
 	state = "goal"
 	state_t = 0.0
 	kickoff_team = scorer_team
@@ -846,7 +856,7 @@ func _sim_rest() -> void:
 			p *= rng.randf()
 		for i in goals:
 			score[t] += 1
-			var f: Footballer = teams[t][rng.randi_range(2, 4)]
+			var f: Footballer = teams[t][rng.randi_range(teams[t].size() - 5, teams[t].size() - 1)]
 			scorers.append([t, f.pid, f.player_name])
 	paused = false
 	get_tree().paused = false
@@ -923,11 +933,12 @@ func _shape_point(p: Footballer, attacking: bool) -> Vector2:
 	var base := _formation_point(p.team, i)
 	var dir := 1.0 if p.team == 0 else -1.0
 	var c := PITCH.get_center()
-	var shift_x := (ball.position.x - c.x) * 0.6
+	var shift_x := (ball.position.x - c.x) * 0.5
 	if attacking:
-		shift_x += dir * PITCH.size.x * (0.16 if p.role == "FWD" else (0.12 if p.role == "MID" else 0.07))
+		shift_x += dir * PITCH.size.x * (0.14 if p.role == "FWD" else (0.11 if p.role == "MID" else 0.06))
 	var x := base.x + shift_x
-	var y := lerpf(base.y, ball.position.y, 0.28)
+	# Squeeze toward the ball's side, more for central players.
+	var y := lerpf(base.y, ball.position.y, 0.22)
 	x = clampf(x, PITCH.position.x + 140, PITCH.end.x - 140)
 	return Vector2(x, y)
 
@@ -944,16 +955,16 @@ func _ai_carrier(p: Footballer) -> void:
 		nd = minf(nd, (o as Footballer).position.distance_to(p.position))
 	if t <= 0.0:
 		_think[p] = 0.25
-		var range_ := lerpf(380.0, 580.0, p.st("shooting"))
+		var range_ := lerpf(450.0, 720.0, p.st("shooting"))
 		if dist_goal < range_ and _carry_t > 0.2:
 			_ai_shoot(p)
 			return
 		# Near the byline with a teammate in the box: cross it.
 		var cy := PITCH.get_center().y
-		if absf(goal.x - p.position.x) < 380.0 and absf(p.position.y - cy) > 230.0 and rng.randf() < 0.5:
+		if absf(goal.x - p.position.x) < 650.0 and absf(p.position.y - cy) > 420.0 and rng.randf() < 0.5:
 			for o in teams[p.team]:
 				var m := o as Footballer
-				if m != p and not m.is_gk and m.position.distance_to(goal) < 450.0:
+				if m != p and not m.is_gk and m.position.distance_to(goal) < 650.0:
 					_cross(p, to_goal.normalized(), rng.randf_range(0.45, 0.75))
 					return
 		if nd < 70.0 and _carry_t > 0.35:
@@ -963,7 +974,7 @@ func _ai_carrier(p: Footballer) -> void:
 				return
 			if p.st("dribbling") > 0.6 and rng.randf() < p.st("dribbling") * 0.5 and p.cooldown <= 0.0:
 				p.start_action("skill")
-		if dist_goal < 700.0 and nd > 80.0 and rng.randf() < 0.2:
+		if dist_goal < 850.0 and nd > 80.0 and rng.randf() < 0.15:
 			_ai_shoot(p)
 			return
 	var dir := to_goal.normalized()
@@ -994,7 +1005,9 @@ func _ai_keeper(p: Footballer, _delta: float) -> void:
 	var out := 1.0 if p.team == 0 else -1.0
 	if ball.owner_player == p:
 		p.desired = Vector2.ZERO
-		if _carry_t > 0.8:
+		if p.action == "" and _in_own_box(p):
+			p.start_action("hold")
+		if _carry_t > 1.0:
 			var mate := _best_pass_target(p, Vector2(out, 0), 0.0)
 			if mate and _lane_blocked(p.position, mate.position, p.team) < 0.4:
 				_pass_to(p, mate)
@@ -1011,7 +1024,7 @@ func _ai_keeper(p: Footballer, _delta: float) -> void:
 				p.facing = Vector2(0, signf(py - p.position.y))
 				p.start_action("slide")
 			return
-	if ball.is_loose() and absf(ball.position.x - g.x) < 300.0 and absf(ball.position.y - cy) < 280.0:
+	if ball.is_loose() and absf(ball.position.x - g.x) < BOX_DEPTH * 0.8 and absf(ball.position.y - cy) < BOX_HALF * 0.7:
 		var nearest_opp := INF
 		for o in teams[1 - p.team]:
 			nearest_opp = minf(nearest_opp, (o as Footballer).position.distance_to(ball.position))
@@ -1019,7 +1032,7 @@ func _ai_keeper(p: Footballer, _delta: float) -> void:
 			p.move_toward_point(ball.position, 1.15, 6.0)
 			return
 	var to_ball := ball.position - g
-	var depth := lerpf(70.0, 26.0, clampf(to_ball.length() / 900.0, 0.0, 1.0))
+	var depth := lerpf(80.0, 26.0, clampf(to_ball.length() / 1400.0, 0.0, 1.0))
 	var spot := g + to_ball.normalized() * depth
 	spot.x = g.x + out * maxf(absf(spot.x - g.x), 22.0)
 	spot.y = clampf(spot.y, cy - GOAL_HALF + 10, cy + GOAL_HALF - 10)
@@ -1169,8 +1182,9 @@ func _draw_hud() -> void:
 		_text(font, Vector2(r.position.x + 30, r.position.y + 32), home["short"], 22, Color.WHITE, 0)
 		_text(font, Vector2(r.end.x - 30, r.position.y + 32), away["short"], 22, Color.WHITE, 2)
 		_text(font, Vector2(vs.x * 0.5, r.position.y + 34), "%d - %d" % [score[0], score[1]], 30, Color.WHITE, 1)
-		var secs := int(ceil(maxf(clock, 0.0)))
-		_text(font, Vector2(vs.x * 0.5, r.end.y + 24), "%d:%02d" % [secs / 60, secs % 60], 20, Color(1, 1, 0.8), 1)
+		_text(font, Vector2(vs.x * 0.5, r.end.y + 24), "%d'" % game_minute(), 20, Color(1, 1, 0.8), 1)
+		if state != "fulltime":
+			_draw_minimap(vs)
 		# Controlled player: name and stamina
 		if controlled and controls.visible:
 			var nm := controlled.player_name if controlled.player_name != "" else "Player %d" % controlled.number
@@ -1200,7 +1214,7 @@ func _draw_hud() -> void:
 		hud.draw_rect(Rect2(Vector2.ZERO, vs), Color(0, 0, 0, 0.5))
 		_text(font, Vector2(24, 48), "< Menu", 26, Color(1, 1, 1, 0.8), 0)
 		_text(font, Vector2(vs.x * 0.5, vs.y * 0.2), "QUICK MATCH", 64, Color(1, 1, 1), 1)
-		_text(font, Vector2(vs.x * 0.5, vs.y * 0.3), "5-a-side  -  3 minutes", 22, Color(1, 1, 1, 0.75), 1)
+		_text(font, Vector2(vs.x * 0.5, vs.y * 0.3), "11-a-side  -  5 minutes", 22, Color(1, 1, 1, 0.75), 1)
 		_text(font, Vector2(vs.x * 0.5, vs.y * 0.43), "YOUR TEAM", 20, Color(1, 1, 1, 0.6), 1)
 		_text(font, Vector2(vs.x * 0.5, vs.y * 0.52), "<   %s   >" % home["name"], 40, (hk["shirt"] as Color).lightened(0.25), 1)
 		_text(font, Vector2(vs.x * 0.5, vs.y * 0.62), "vs  %s" % away["name"], 26, (ak["shirt"] as Color).lightened(0.25), 1)
@@ -1224,6 +1238,31 @@ func _draw_hud() -> void:
 			_text(font, Vector2(vs.x * 0.5, vs.y * 0.9), "Tap to continue", 24, Color(1, 1, 1, 0.6 + 0.4 * sin(state_t * 4.0)), 1)
 	else:
 		_text(font, Vector2(vs.x - 14, vs.y - 8), "v" + version, 14, Color(1, 1, 1, 0.35), 2)
+
+
+func game_minute() -> int:
+	return clampi(int((1.0 - clock / MATCH_SECONDS) * 90.0), 0, 90)
+
+
+## Small radar of the whole pitch, bottom centre.
+func _draw_minimap(vs: Vector2) -> void:
+	var w := 190.0
+	var h := w * PITCH.size.y / PITCH.size.x
+	var r := Rect2(vs.x * 0.5 - w * 0.5, vs.y - h - 10, w, h)
+	hud.draw_rect(r.grow(3), Color(0, 0, 0, 0.45))
+	hud.draw_rect(r, Color(0.25, 0.5, 0.25, 0.5))
+	hud.draw_rect(r, Color(1, 1, 1, 0.35), false, 1.0)
+	hud.draw_line(Vector2(r.get_center().x, r.position.y), Vector2(r.get_center().x, r.end.y), Color(1, 1, 1, 0.3), 1.0)
+	var k := w / PITCH.size.x
+	for t in 2:
+		var col: Color = team_data[t]["kit"]["shirt"]
+		for o in teams[t]:
+			var f := o as Footballer
+			var p := r.position + (f.position - PITCH.position) * k
+			hud.draw_circle(p, 3.6 if f == controlled else 2.6, Color.WHITE if f == controlled else col)
+			if f != controlled:
+				hud.draw_arc(p, 2.8, 0, TAU, 8, Color(0, 0, 0, 0.6), 1.0)
+	hud.draw_circle(r.position + (ball.position - PITCH.position) * k, 2.2, Color(1, 1, 0.3))
 
 
 func _text(font: Font, p: Vector2, s: String, size: int, col: Color, align: int) -> void:

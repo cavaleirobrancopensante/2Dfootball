@@ -18,4 +18,4 @@ func _process(delta: float) -> bool:
 		results.append(m.score.duplicate())
 		print("match ", results.size(), ": ", m.score)
 		m._to_menu()
-	return results.size() >= 3
+	return results.size() >= 4

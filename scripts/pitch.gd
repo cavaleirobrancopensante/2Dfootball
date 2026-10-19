@@ -2,7 +2,7 @@ extends Node2D
 ## Draws the pitch: striped grass, markings, goals with nets, and the
 ## surrounding boards and stands.
 
-var pitch := Rect2(0, 0, 2200, 1300)
+var pitch := Rect2(0, 0, 3600, 2330)
 var goal_half_width := 130.0
 var goal_depth := 46.0
 
@@ -16,7 +16,7 @@ func _draw() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
 	var crowd := [Color("#c84040"), Color("#4060c0"), Color("#e0d050"), Color("#e0e0e0"), Color("#40a060"), Color("#202020")]
-	for i in 2600:
+	for i in 5200:
 		var p := Vector2(rng.randf_range(outer.position.x, outer.end.x), rng.randf_range(outer.position.y, outer.end.y))
 		if pitch.grow(120).has_point(p):
 			continue
@@ -32,7 +32,7 @@ func _draw() -> void:
 		x += 160
 		k += 1
 	# Grass stripes
-	var stripes := 14
+	var stripes := 18
 	var sw := pitch.size.x / stripes
 	for i in stripes:
 		var c := Color("#4c9a3e") if i % 2 == 0 else Color("#438c37")
@@ -40,21 +40,29 @@ func _draw() -> void:
 	# Markings
 	var line := Color(1, 1, 1, 0.85)
 	var w := 4.0
+	var m := pitch.size.x / 105.0   # pixels per metre; markings use real sizes
 	draw_rect(pitch, line, false, w)
 	var c := pitch.get_center()
 	draw_line(Vector2(c.x, pitch.position.y), Vector2(c.x, pitch.end.y), line, w)
-	draw_arc(c, 150, 0, TAU, 64, line, w)
+	draw_arc(c, 9.15 * m, 0, TAU, 72, line, w)
 	draw_circle(c, 6, line)
 	for side in [0, 1]:
 		var gx: float = pitch.position.x if side == 0 else pitch.end.x
 		var s := 1.0 if side == 0 else -1.0
 		# Penalty box, six-yard box, spot, arc
-		draw_rect(_box(gx, s, 330, 300), line, false, w)
-		draw_rect(_box(gx, s, 120, 170), line, false, w)
-		draw_circle(Vector2(gx + s * 220, c.y), 5, line)
-		var arc_c := Vector2(gx + s * 220, c.y)
-		var start := -0.75 if side == 0 else PI - 0.75
-		draw_arc(arc_c, 150, start, start + 1.5, 24, line, w)
+		draw_rect(_box(gx, s, 16.5 * m, 20.16 * m), line, false, w)
+		draw_rect(_box(gx, s, 5.5 * m, 9.16 * m), line, false, w)
+		var spot := Vector2(gx + s * 11.0 * m, c.y)
+		draw_circle(spot, 5, line)
+		var half_angle := acos((16.5 - 11.0) / 9.15)
+		var start := -half_angle if side == 0 else PI - half_angle
+		draw_arc(spot, 9.15 * m, start, start + half_angle * 2.0, 32, line, w)
+		# Corner arcs
+		for cy_ in [pitch.position.y, pitch.end.y]:
+			var a0 := 0.0 if side == 0 else PI / 2.0
+			if cy_ == pitch.end.y:
+				a0 = -PI / 2.0 if side == 0 else PI
+			draw_arc(Vector2(gx, cy_), 1.0 * m, a0, a0 + PI / 2.0, 8, line, w)
 		_draw_goal(gx, s)
 
 

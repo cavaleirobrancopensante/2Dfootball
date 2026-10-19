@@ -2,9 +2,9 @@
 
 **Play in your browser: https://cavaleirobrancopensante.github.io/2Dfootball/**
 
-Arcade 5-a-side football with a manager career on top, made in Godot 4.7 for mobile and browser.
+Arcade 11-a-side football with a manager career on top, made in Godot 4.7 for mobile and browser. Matches last five minutes (90 on the clock) on a full-size pitch, with a minimap at the bottom of the screen.
 
-- **Career:** pick a club in one of four divisions and manage it season after season: lineups and formations, fitness, transfers, finances, promotion and relegation, and a cup. Play each match yourself or simulate it.
+- **Career:** pick a club in one of four divisions and manage it season after season: 20-man squads, five formations (4-4-2, 4-3-3, 3-5-2, 4-5-1, 5-3-2), fitness, transfers, finances, promotion and relegation, and a cup. Play each match yourself or simulate it.
 - **Quick match:** jump straight into a match with any of 8 kits.
 
 All clubs, players and leagues are fictional. Everything lives in one editable file, `data/database.json`. Rename clubs, players and leagues, change ratings, ages and kits there, on your own copy, and new careers start from your edited world.
@@ -46,11 +46,11 @@ Each player has a market value in euros and a weekly wage based on rating, age a
 - Money: gate receipts by stadium size and reputation, TV money by division, prize money, wages every week.
 - Transfers: buy from any club (they ask more for their starters), sign free agents, sell (you get an offer), or release.
 - Every summer: ageing and development, retirements, 2 youth players per club.
-- Saves automatically after every week.
+- Saves automatically after every week. (Careers from 1.1, which was 5-a-side, can't be continued.)
 
 ## How the players are drawn
 
-All players share one sprite sheet drawn in **key colours**: skin magenta, shirt red, shorts blue, socks yellow. `shaders/recolor.gdshader` swaps those for each player's real colours. Hair is a separate overlay (green key colour) in 12 styles plus bald.
+All players share one sprite sheet drawn in **key colours**: skin magenta, shirt red, shorts blue, socks yellow. `shaders/recolor.gdshader` swaps those for each player's real colours. Hair is a separate overlay (green key colour) in 12 styles plus bald. Keepers have their own sheet (`players_gk.png`): ready stance, catch and hold, throw, kick from hands, and a dive that's rotated to whichever way he dives.
 
 ### Replacing or adding sprites
 

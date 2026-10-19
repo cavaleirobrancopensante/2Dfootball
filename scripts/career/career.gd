@@ -8,12 +8,14 @@ extends RefCounted
 const SAVE_PATH := "user://career.save"
 const DB_PATH := "res://data/database.json"
 const TICKET := 15.0
-const TV_PER_WEEK := [100000, 30000, 10000, 4000]
+const TV_PER_WEEK := [180000, 55000, 16000, 5000]
 const PRIZE := [5000000, 1500000, 500000, 150000]
 const CUP_PRIZE := 1000000
 const CUP_ROUND_NAMES := ["Preliminary round", "Round of 32", "Round of 16", "Quarter-final", "Semi-final", "Final"]
-const MIN_SQUAD := 7
-const MAX_SQUAD := 18
+const MIN_SQUAD := 14
+const MAX_SQUAD := 28
+const LINEUP := 11
+const SAVE_VERSION := 2
 
 var rng := RandomNumberGenerator.new()
 
@@ -83,7 +85,8 @@ func new_from_database() -> void:
 	for pid in db.get("free_agents", []):
 		free_agents.append(int(pid))
 	for c in clubs:
-		c["formation"] = ["2-2", "1-2-1", "2-1-1"][rng.randi() % 3]
+		var fs: Array = Ratings.FORMATIONS.keys()
+		c["formation"] = fs[rng.randi() % fs.size()]
 		auto_lineup(c["id"])
 
 
@@ -256,7 +259,7 @@ func squad(cid: int) -> Array:
 
 
 func roles_for(cid: int) -> Array:
-	return ["GK"] + Ratings.FORMATIONS[clubs[cid]["formation"]]
+	return ["GK"] + Ratings.roles(clubs[cid]["formation"])
 
 
 func lineup_players(cid: int) -> Array:
@@ -293,7 +296,7 @@ func add_news(t: String) -> void:
 ## Picks the best available keeper and outfield players for the formation.
 func auto_lineup(cid: int) -> void:
 	var c: Dictionary = clubs[cid]
-	var roles: Array = ["GK"] + Ratings.FORMATIONS[c["formation"]]
+	var roles: Array = ["GK"] + Ratings.roles(c["formation"])
 	var chosen: Array = []
 	for role in roles:
 		var best := -1
@@ -321,10 +324,10 @@ func auto_lineup(cid: int) -> void:
 	c["lineup"] = chosen
 
 
-## Makes sure a lineup is legal (5 distinct, fit players, keeper first).
+## Makes sure a lineup is legal (11 distinct, fit players, keeper first).
 func validate_lineup(cid: int) -> void:
 	var c: Dictionary = clubs[cid]
-	var ok: bool = c["lineup"].size() == 5
+	var ok: bool = c["lineup"].size() == LINEUP
 	var seen := {}
 	for i in c["lineup"].size():
 		var pid: int = c["lineup"][i]
@@ -542,7 +545,7 @@ func can_buy(pid: int) -> String:
 		return "Your squad is full (%d players)." % MAX_SQUAD
 	if asking_price(pid) > clubs[user]["budget"]:
 		return "Not enough money."
-	if p["club"] != -1 and clubs[p["club"]]["players"].size() <= 9:
+	if p["club"] != -1 and clubs[p["club"]]["players"].size() <= 16:
 		return "%s won't sell: their squad is too small." % clubs[p["club"]]["name"]
 	return ""
 
@@ -621,7 +624,26 @@ func _ai_transfers() -> void:
 		if cid == user:
 			continue
 		var n: int = c["players"].size()
-		if n < 11 and rng.randf() < 0.5:
+		if c["budget"] < 0 and n > 18:
+			# In debt: let the best-paid squad player (not a starter) go.
+			var worst := -1
+			var wv := -1
+			for pid in c["players"]:
+				if c["lineup"].has(pid):
+					continue
+				var w := Ratings.wage(players[pid])
+				if w > wv:
+					wv = w
+					worst = pid
+			if worst != -1:
+				var buyer := -1
+				for o in clubs:
+					if o["id"] != cid and o["id"] != user and o["budget"] > Ratings.value(players[worst]) and o["players"].size() < 22:
+						buyer = o["id"]
+						break
+				_move_player(worst, buyer, Ratings.round_money(Ratings.value(players[worst]) * 0.8) if buyer != -1 else 0)
+			continue
+		if n < 18 and rng.randf() < 0.5:
 			# Sign the best free agent they can afford.
 			var best := -1
 			var bo := -1
@@ -641,7 +663,7 @@ func _ai_transfers() -> void:
 				weakest = mini(weakest, Ratings.overall(players[pid]))
 			for tries in 12:
 				var other: Dictionary = clubs[rng.randi() % clubs.size()]
-				if other["id"] == cid or other["id"] == user or other["players"].size() <= 10:
+				if other["id"] == cid or other["id"] == user or other["players"].size() <= 17:
 					continue
 				if other["division"] < c["division"]:
 					continue
@@ -764,7 +786,7 @@ func _youth_intake(summary: Dictionary) -> void:
 	for c in clubs:
 		var tier: int = c["division"]
 		var base: float = [70.0, 60.0, 51.0, 43.0][tier] - 14.0 + rng.randf_range(-4, 4)
-		for i in 2:
+		for i in 3:
 			if c["players"].size() >= MAX_SQUAD:
 				break
 			var pos: String = ["GK", "DEF", "MID", "FWD", "FWD", "MID", "DEF"][rng.randi() % 7]
@@ -774,7 +796,7 @@ func _youth_intake(summary: Dictionary) -> void:
 			c["players"].append(p["id"])
 			if c["id"] == user:
 				summary["youth"].append("%s (%s, %d, potential %d)" % [p["name"], pos, p["age"], p["potential"]])
-	while free_agents.size() < 30:
+	while free_agents.size() < 60:
 		var pos: String = ["GK", "DEF", "MID", "FWD"][rng.randi() % 4]
 		var p := _make_youth(pos, rng.randf_range(38, 60), names)
 		p["age"] = rng.randi_range(20, 32)
@@ -790,11 +812,11 @@ func _tidy_free_agents() -> void:
 		if players[pid]["age"] >= 31 and rng.randf() < 0.6:
 			free_agents.erase(pid)
 			players.erase(pid)
-	if free_agents.size() > 50:
+	if free_agents.size() > 90:
 		free_agents.sort_custom(func(a: int, b: int) -> bool: return Ratings.value(players[a]) > Ratings.value(players[b]))
-		for pid in free_agents.slice(50):
+		for pid in free_agents.slice(90):
 			players.erase(pid)
-		free_agents.resize(50)
+		free_agents.resize(90)
 
 
 func _make_youth(pos: String, base: float, names: Dictionary) -> Dictionary:
@@ -846,7 +868,7 @@ func _name_pool() -> Dictionary:
 
 func _trim_squad(cid: int) -> void:
 	var c: Dictionary = clubs[cid]
-	while c["players"].size() > 16:
+	while c["players"].size() > 22:
 		var worst := -1
 		var wv := INF
 		for pid in c["players"]:
@@ -885,7 +907,7 @@ static func kits_clash(a: Dictionary, b: Dictionary) -> bool:
 # ------------------------------------------------------------------ save / load
 
 func to_dict() -> Dictionary:
-	return {"year": year, "week": week, "calendar": calendar, "divisions": divisions, "division_names": division_names,
+	return {"version": SAVE_VERSION, "year": year, "week": week, "calendar": calendar, "divisions": divisions, "division_names": division_names,
 		"clubs": clubs, "players": players, "free_agents": free_agents, "fixtures": fixtures, "cup": cup,
 		"history": history, "news": news, "user": user, "next_pid": next_pid, "season_summary": season_summary}
 
@@ -908,12 +930,17 @@ static func has_save() -> bool:
 	return FileAccess.file_exists(SAVE_PATH)
 
 
+## True if there's a save from an older, incompatible version (5-a-side careers).
+static func old_save() -> bool:
+	return has_save() and load_saved() == null
+
+
 static func load_saved() -> Career:
 	var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
 	if f == null:
 		return null
 	var v: Variant = f.get_var()
-	if not (v is Dictionary):
+	if not (v is Dictionary) or int((v as Dictionary).get("version", 1)) != SAVE_VERSION:
 		return null
 	var c := Career.new()
 	c.from_dict(v)

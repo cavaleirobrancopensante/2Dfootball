@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="2D Football"
-config/version="1.1"
+config/version="1.2"
 config/description="Arcade 5-a-side football for mobile."
 run/main_scene="res://scenes/app.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")

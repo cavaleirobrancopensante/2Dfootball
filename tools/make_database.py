@@ -17,7 +17,7 @@ ATTRS = ["pace", "acceleration", "stamina", "passing", "crossing", "shooting", "
 
 LEAGUES = ["First Division", "Second Division", "Third Division", "Fourth Division"]
 CLUBS_PER_LEAGUE = 10
-SQUAD = ["GK", "GK", "DEF", "DEF", "DEF", "DEF", "MID", "MID", "MID", "MID", "FWD", "FWD", "FWD"]
+SQUAD = ["GK", "GK", "GK"] + ["DEF"] * 7 + ["MID"] * 6 + ["FWD"] * 4   # 20 players
 TIER_MEAN = [74, 64, 55, 46]    # average rating of a squad per division
 
 TOWNS = [
@@ -176,7 +176,7 @@ def main():
             ids.append(cid)
         leagues.append({"name": lname, "clubs": ids})
     free = []
-    for _ in range(40):
+    for _ in range(80):
         pos = rng.choice(["GK", "DEF", "DEF", "MID", "MID", "FWD", "FWD"])
         players.append(make_player(pid, pos, rng.uniform(40, 62), used_names))
         free.append(pid)
