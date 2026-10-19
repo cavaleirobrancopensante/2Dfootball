@@ -5,7 +5,7 @@ var m: Node
 var t := 0.0
 var results: Array = []
 func _initialize() -> void:
-	m = load("res://scenes/main.tscn").instantiate()
+	m = load("res://scenes/match.tscn").instantiate()
 	root.add_child(m)
 func _process(delta: float) -> bool:
 	t += delta
